@@ -14,6 +14,8 @@ typedef struct window window_t;
 struct window {
     int  used, x, y, w, h;          /* w,h = zone cliente */
     int  minimized;
+    int  resizable, min_w, min_h;   /* redimensionnable et taille minimale */
+    int  maximized, rx, ry, rw, rh; /* position avant agrandissement */
     char title[40];
     u32  accent;                    /* couleur de l'icône */
     int  icon;
@@ -28,6 +30,7 @@ struct window {
 window_t *wm_open(const char *title, int w, int h, int icon);
 void      wm_close(window_t *w);
 void      wm_invalidate(void);
+void      wm_set_resizable(window_t *w, int min_w, int min_h);
 void      wm_init(void);
 void      wm_run(void);
 void      draw_icon(int icon, int x, int y, int size);

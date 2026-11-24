@@ -14,6 +14,8 @@ avec des fenêtres, une barre des tâches et un menu Démarrer.
   et souris PS/2.
 - Graphismes : double tampon, police 8 × 16 avec les caractères accentués, ombres, dégradés.
 - Fenêtres déplaçables, réduction, fermeture, premier plan au clic.
+- Fenêtres redimensionnables par le bord droit, le bord du bas ou le coin (Terminal,
+  Bloc-notes, Explorateur), avec bouton Agrandir et double-clic sur la barre de titre.
 - Barre des tâches avec horloge, menu Démarrer, icônes du bureau (double-clic).
 - Système de fichiers en mémoire avec dossiers (Documents, Images, Système).
   Les fichiers sont perdus au redémarrage.

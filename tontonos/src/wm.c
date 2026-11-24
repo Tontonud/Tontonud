@@ -7,6 +7,9 @@ static int zorder[MAXWIN], zcount;     /* zorder[zcount-1] = premier plan */
 static int dirty = 1;
 static int mx, my, mbtn;
 static int drag_win = -1, drag_dx, drag_dy, capture_win = -1;
+static int rs_win = -1, rs_mode, rs_sx, rs_sy, rs_w, rs_h;   /* redimensionnement en cours */
+static int title_click_win = -1; static u32 title_click_tick;
+#define GRIP 6        /* épaisseur de la zone de saisie des bords */
 static int start_open;
 static int last_click_tick, last_click_icon = -1, sel_icon = -1;
 static int clock_min = -1;
@@ -139,6 +142,7 @@ void wm_close(window_t *w) {
     w->used = 0;
     z_remove(i);
     if (drag_win == i) drag_win = -1;
+    if (rs_win == i) rs_win = -1;
     if (capture_win == i) capture_win = -1;
     dirty = 1;
 }
@@ -147,6 +151,34 @@ static void frame_rects(window_t *w, int *bx, int *by, int *bw, int *bh) {
     *bx = w->x; *by = w->y; *bw = w->w + 2 * BORDER; *bh = w->h + TITLE_H + BORDER;
 }
 #define BTN_W 40
+static int nbtn(window_t *w) { return w->resizable ? 3 : 2; }
+
+void wm_set_resizable(window_t *w, int min_w, int min_h) {
+    w->resizable = 1; w->min_w = min_w; w->min_h = min_h;
+}
+static void toggle_max(window_t *w) {
+    if (!w->resizable) return;
+    if (w->maximized) {
+        w->x = w->rx; w->y = w->ry; w->w = w->rw; w->h = w->rh; w->maximized = 0;
+    } else {
+        w->rx = w->x; w->ry = w->y; w->rw = w->w; w->rh = w->h;
+        w->x = 0; w->y = 0; w->w = scr_w - 2 * BORDER; w->h = scr_h - TASKBAR_H - TITLE_H - BORDER;
+        w->maximized = 1;
+    }
+    dirty = 1;
+}
+/* Bords saisissables : 1 = droit, 2 = bas (3 = coin) */
+static int resize_zone(window_t *w, int px, int py) {
+    if (!w->resizable || w->maximized || w->minimized) return 0;
+    int bx, by, bw, bh; frame_rects(w, &bx, &by, &bw, &bh);
+    if (px < bx || py < by + TITLE_H || px >= bx + bw + GRIP || py >= by + bh + GRIP) return 0;
+    int z = 0;
+    if (px >= bx + bw - GRIP) z |= 1;
+    if (py >= by + bh - GRIP) z |= 2;
+    /* le coin est plus large pour être facile à attraper */
+    if (px >= bx + bw - 16 && py >= by + bh - 16) z = 3;
+    return z;
+}
 static void draw_window(int i, int active) {
     window_t *w = &wins[i];
     int x, y, fw, fh; frame_rects(w, &x, &y, &fw, &fh);
@@ -156,7 +188,7 @@ static void draw_window(int i, int active) {
     gfx_rect(x, y, fw, fh, active ? accent_color : RGB(170, 178, 192));
     gfx_fill(x, y, fw, 2, active ? accent_color : RGB(170, 178, 192));
     draw_icon(w->icon, x + 8, y + 5, 16);
-    gfx_clip(x, y, fw - 2 * BTN_W, TITLE_H);
+    gfx_clip(x, y, fw - nbtn(w) * BTN_W, TITLE_H);
     gfx_text(x + 32, y + 6, w->title, active ? RGB(20, 24, 32) : RGB(110, 118, 132));
     gfx_noclip();
     /* boutons réduire / fermer */
@@ -167,6 +199,15 @@ static void draw_window(int i, int active) {
     for (int k = 0; k < 9; k++) { gfx_pixel(bx + 15 + k, y + 9 + k, xc); gfx_pixel(bx + 23 - k, y + 9 + k, xc);
                                   gfx_pixel(bx + 16 + k, y + 9 + k, xc); gfx_pixel(bx + 24 - k, y + 9 + k, xc); }
     int mbx = bx - BTN_W;
+    if (w->resizable) {
+        if (ui_hit(mx, my, mbx, y + 2, BTN_W, TITLE_H - 2)) gfx_fill(mbx, y + 2, BTN_W, TITLE_H - 2, RGB(222, 226, 234));
+        if (w->maximized) {
+            gfx_rect(mbx + 17, y + 7, 9, 9, RGB(60, 66, 78));
+            gfx_fill(mbx + 14, y + 10, 9, 9, active ? RGB(255, 255, 255) : RGB(236, 239, 244));
+            gfx_rect(mbx + 14, y + 10, 9, 9, RGB(60, 66, 78));
+        } else gfx_rect(mbx + 15, y + 8, 11, 11, RGB(60, 66, 78));
+        mbx -= BTN_W;
+    }
     if (ui_hit(mx, my, mbx, y + 2, BTN_W, TITLE_H - 2)) gfx_fill(mbx, y + 2, BTN_W, TITLE_H - 2, RGB(222, 226, 234));
     gfx_fill(mbx + 15, y + 14, 10, 2, RGB(60, 66, 78));
     /* zone cliente */
@@ -175,6 +216,11 @@ static void draw_window(int i, int active) {
     gfx_fill(cx, cy, w->w, w->h, RGB(250, 251, 253));
     if (w->draw) w->draw(w, cx, cy);
     gfx_noclip();
+    /* poignée de redimensionnement dans le coin */
+    if (w->resizable && !w->maximized)
+        for (int k = 0; k < 3; k++)
+            for (int j = 0; j <= k; j++)
+                gfx_fill(x + fw - 5 - (k - j) * 4, y + fh - 5 - j * 4, 2, 2, RGB(150, 158, 176));
 }
 
 /* ---- Bureau ---- */
@@ -323,7 +369,7 @@ static int win_at(int x, int y) {
         window_t *w = &wins[zorder[k]];
         if (w->minimized) continue;
         int bx, by, bw, bh; frame_rects(w, &bx, &by, &bw, &bh);
-        if (ui_hit(x, y, bx, by, bw, bh)) return zorder[k];
+        if (ui_hit(x, y, bx, by, bw, bh) || resize_zone(w, x, y)) return zorder[k];
     }
     return -1;
 }
@@ -354,13 +400,25 @@ static void on_press(int button) {
         window_t *w = &wins[i];
         if (top_win() != i) { z_top(i); dirty = 1; }
         int bx, by, bw, bh; frame_rects(w, &bx, &by, &bw, &bh);
+        int rz = button == 1 ? resize_zone(w, mx, my) : 0;
+        if (rz) {
+            rs_win = i; rs_mode = rz; rs_sx = mx; rs_sy = my; rs_w = w->w; rs_h = w->h;
+            return;
+        }
         if (my < by + TITLE_H) {
             if (button != 1) return;
             if (mx >= bx + bw - BTN_W) { wm_close(w); return; }
-            if (mx >= bx + bw - 2 * BTN_W) { w->minimized = 1; dirty = 1; return; }
+            if (w->resizable && mx >= bx + bw - 2 * BTN_W) { toggle_max(w); return; }
+            if (mx >= bx + bw - nbtn(w) * BTN_W) { w->minimized = 1; dirty = 1; return; }
+            /* double-clic sur la barre de titre : agrandir / restaurer */
+            if (title_click_win == i && ticks - title_click_tick < 60) {
+                title_click_win = -1; toggle_max(w); return;
+            }
+            title_click_win = i; title_click_tick = ticks;
             drag_win = i; drag_dx = mx - w->x; drag_dy = my - w->y;
             return;
         }
+        if (mx >= bx + bw || my >= by + bh) return;   /* marge de saisie hors de la fenêtre */
         int cx = mx - bx - BORDER, cy = my - by - TITLE_H;
         if (w->mouse && cx >= 0 && cy >= 0 && cx < w->w && cy < w->h) {
             capture_win = i;
@@ -391,6 +449,8 @@ static void handle_mouse(mouse_ev_t *e) {
     if ((mbtn & 2) && !(old & 2)) on_press(2);
     if (!(mbtn & 1) && (old & 1)) {
         drag_win = -1;
+        if (rs_win >= 0) dirty = 1;
+        rs_win = -1;
         if (capture_win >= 0 && wins[capture_win].used && wins[capture_win].mouse) {
             window_t *w = &wins[capture_win];
             w->mouse(w, mx - w->x - BORDER, my - w->y - TITLE_H, MEV_UP, mbtn);
@@ -399,8 +459,20 @@ static void handle_mouse(mouse_ev_t *e) {
         capture_win = -1;
     }
     if (e->dx || e->dy) {
-        if (drag_win >= 0) {
+        if (rs_win >= 0) {
+            window_t *w = &wins[rs_win];
+            if (rs_mode & 1) w->w = max(w->min_w, min(rs_w + mx - rs_sx, scr_w - w->x - 2 * BORDER));
+            if (rs_mode & 2) w->h = max(w->min_h, min(rs_h + my - rs_sy, scr_h - TASKBAR_H - w->y - TITLE_H - BORDER));
+            dirty = 1;
+        } else if (drag_win >= 0) {
             window_t *w = &wins[drag_win];
+            if (w->maximized) {
+                /* tirer une fenêtre agrandie la restaure sous le curseur */
+                int fw = w->w + 2 * BORDER;
+                toggle_max(w);
+                drag_dx = drag_dx * (w->w + 2 * BORDER) / fw;
+            }
+            title_click_win = -1;
             w->x = mx - drag_dx; w->y = my - drag_dy;
             if (w->y < 0) w->y = 0;
             if (w->y > scr_h - TASKBAR_H - TITLE_H) w->y = scr_h - TASKBAR_H - TITLE_H;
@@ -416,8 +488,8 @@ static void handle_mouse(mouse_ev_t *e) {
             int over_btns = 0;
             int t = win_at(mx, my);
             if (t >= 0) { window_t *w = &wins[t]; int bx = w->x + w->w + 2 * BORDER;
-                if (my < w->y + TITLE_H && mx >= bx - 2 * BTN_W) over_btns = 1 + (mx >= bx - BTN_W); }
-            zone = zone * 4 + over_btns + (my >= scr_h - TASKBAR_H && mx < START_W) * 3;
+                if (my < w->y + TITLE_H && mx >= bx - nbtn(w) * BTN_W) over_btns = 1 + (bx - mx - 1) / BTN_W; }
+            zone = zone * 8 + over_btns + (my >= scr_h - TASKBAR_H && mx < START_W) * 3;
             if (zone != last_zone) { last_zone = zone; dirty = 1; }
         }
     }
@@ -454,6 +526,12 @@ void wm_run(void) {
             last_tick = now;
         }
         if (dirty) { dirty = 0; render(); }
+        {
+            int shape = 0, t = win_at(mx, my);
+            int rz = rs_win >= 0 ? rs_mode : (drag_win < 0 && capture_win < 0 && !start_open && t >= 0) ? resize_zone(&wins[t], mx, my) : 0;
+            if (rz) shape = rz == 3 ? 1 : rz == 1 ? 2 : 3;
+            gfx_cursor_shape(shape);
+        }
         gfx_cursor(mx, my);
         if (!any) __asm__ volatile("sti; hlt");
     }

@@ -27,6 +27,7 @@ void gfx_blit(int x, int y, int w, int h, const u32 *src);
 void gfx_shadow(int x, int y, int w, int h);
 void gfx_present(void);
 void gfx_cursor(int x, int y);
+void gfx_cursor_shape(int shape);     /* 0 flèche, 1 diagonale, 2 horizontale, 3 verticale */
 u32  gfx_blend(u32 a, u32 b, int alpha);   /* alpha 0..255 de b sur a */
 
 #endif

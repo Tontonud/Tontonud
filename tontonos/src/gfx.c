@@ -126,9 +126,35 @@ static const char *cursor_img[] = {
 };
 #define CUR_H 17
 #define CUR_W 11
-static int cur_x = -100, cur_y = -100;
+static int cur_x = -100, cur_y = -100, cur_shape;
+
+/* Curseurs de redimensionnement : flèche double dessinée point par point */
+static void resize_cursor_fb(int dx, int dy) {
+    int len = (dx && dy) ? 5 : 7;
+    int hx1 = -dx + dy, hy1 = -dy - dx, hx2 = -dx - dy, hy2 = -dy + dx;
+    hx1 = (hx1 > 0) - (hx1 < 0); hy1 = (hy1 > 0) - (hy1 < 0);
+    hx2 = (hx2 > 0) - (hx2 < 0); hy2 = (hy2 > 0) - (hy2 < 0);
+    for (int pass = 0; pass < 2; pass++) {
+        u32 c = pass ? 0xFFFFFF : 0;
+        int r = pass ? 0 : 1;
+        for (int t = -len; t <= len; t++)
+            for (int a = -r; a <= r; a++) for (int b = -r; b <= r; b++)
+                fb_pixel(cur_x + t * dx + a, cur_y + t * dy + b, c);
+        for (int side = -1; side <= 1; side += 2) {
+            int tx = cur_x + side * len * dx, ty = cur_y + side * len * dy;
+            for (int k = 1; k <= 4; k++)
+                for (int a = -r; a <= r; a++) for (int b = -r; b <= r; b++) {
+                    fb_pixel(tx + side * k * hx1 + a, ty + side * k * hy1 + b, c);
+                    fb_pixel(tx + side * k * hx2 + a, ty + side * k * hy2 + b, c);
+                }
+        }
+    }
+}
 
 static void draw_cursor_fb(void) {
+    if (cur_shape == 1) { resize_cursor_fb(1, 1); return; }
+    if (cur_shape == 2) { resize_cursor_fb(1, 0); return; }
+    if (cur_shape == 3) { resize_cursor_fb(0, 1); return; }
     for (int j = 0; j < CUR_H; j++)
         for (int i = 0; cursor_img[j][i]; i++) {
             char c = cursor_img[j][i];
@@ -139,7 +165,7 @@ static void draw_cursor_fb(void) {
 void gfx_present(void) { copy_rect(0, 0, scr_w, scr_h); draw_cursor_fb(); }
 void gfx_cursor(int x, int y) {
     if (x == cur_x && y == cur_y) return;
-    copy_rect(cur_x, cur_y, CUR_W, CUR_H);
+    copy_rect(cur_x - 12, cur_y - 12, CUR_W + 24, CUR_H + 24);
     cur_x = x; cur_y = y;
     draw_cursor_fb();
 }
@@ -148,4 +174,10 @@ void gfx_char_scaled(int x, int y, u8 ch, u32 fg, int sx, int sy) {
     for (int j = 0; j < FONT_H; j++)
         for (int i = 0; i < FONT_W; i++)
             if (g[j] & (0x80 >> i)) gfx_fill(x + i * sx, y + j * sy, sx, sy, fg);
+}
+void gfx_cursor_shape(int shape) {
+    if (shape == cur_shape) return;
+    copy_rect(cur_x - 12, cur_y - 12, CUR_W + 24, CUR_H + 24);
+    cur_shape = shape;
+    draw_cursor_fb();
 }

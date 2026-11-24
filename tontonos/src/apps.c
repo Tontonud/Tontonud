@@ -249,6 +249,7 @@ void app_terminal(void) {
     term_t *t = kzalloc(sizeof(term_t));
     if (!t) { wm_close(w); return; }
     w->data = t; w->draw = t_draw; w->key = t_key; w->tick = t_tick;
+    wm_set_resizable(w, 320, 160);
     t->cwd = fs_find(fs_root, "Documents"); if (!t->cwd) t->cwd = fs_root;
     t_print(t, "TontonOS [version 1.1]", T_BLUE);
     t_print(t, "Tapez « aide » pour voir les commandes.", MUTED);
@@ -397,6 +398,7 @@ void app_notes_open(fnode_t *f) {
     notes_t *n = kzalloc(sizeof(notes_t));
     if (!n) { wm_close(w); return; }
     w->data = n; w->draw = n_draw; w->key = n_key; w->tick = n_tick; w->mouse = n_mouse;
+    wm_set_resizable(w, 330, 160);
     if (f && !f->is_dir) {
         n->file = f;
         n->len = min(f->size, N_MAX - 1);
@@ -821,4 +823,5 @@ void app_explorer(void) {
     if (!e) { wm_close(w); return; }
     e->dir = fs_root; e->sel = -1; e->last_idx = -1;
     w->data = e; w->draw = e_draw; w->mouse = e_mouse; w->key = e_key;
+    wm_set_resizable(w, 480, 200);
 }
