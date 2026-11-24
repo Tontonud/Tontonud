@@ -15,10 +15,14 @@ avec des fenêtres, une barre des tâches et un menu Démarrer.
 - Graphismes : double tampon, police 8 × 16 avec les caractères accentués, ombres, dégradés.
 - Fenêtres déplaçables, réduction, fermeture, premier plan au clic.
 - Barre des tâches avec horloge, menu Démarrer, icônes du bureau (double-clic).
+- Système de fichiers en mémoire avec dossiers (Documents, Images, Système).
+  Les fichiers sont perdus au redémarrage.
 - Écran bleu en cas d'erreur du processeur.
 
-Applications : Terminal, Bloc-notes, Calculatrice, Peinture, Mines, Paramètres
-(fond d'écran, couleur, clavier) et À propos.
+Applications : Explorateur, Terminal, Bloc-notes (ouvrir, modifier, enregistrer avec Ctrl+S),
+Calculatrice, Peinture, Mines, Paramètres (fond d'écran, couleur, clavier) et À propos.
+
+![Explorateur et Bloc-notes](captures/explorateur.png)
 
 ## L'essayer
 
@@ -51,11 +55,13 @@ make run    # lance QEMU
 | `src/input.c` | Clavier et souris PS/2 |
 | `src/gfx.c` | Dessin : rectangles, texte, lignes, curseur, copie à l'écran |
 | `src/wm.c` | Bureau, fenêtres, barre des tâches, menu Démarrer |
-| `src/apps.c` | Les sept applications |
+| `src/apps.c` | Les huit applications |
+| `src/fs.c` | Système de fichiers en mémoire |
 | `src/lib.c` | Chaînes, nombres, allocateur mémoire |
 | `src/font.h` | Police générée par `tools/psf2c.py` (police console Lat15-VGA16) |
 
 ## Commandes du terminal
 
 `aide`, `effacer`, `echo`, `heure`, `date`, `mem`, `uptime`, `ver`,
-`clavier fr|us`, `fond 1-4`, `ouvrir <appli>`, `calc 12 * 7`, `redemarrer`, `eteindre`.
+`clavier fr|us`, `fond 1-4`, `ouvrir <appli>`, `calc 12 * 7`, `redemarrer`, `eteindre`,
+`ls`, `cd`, `pwd`, `cat`, `mkdir`, `touch`, `rm`, `edit`. La touche Tab complète les noms de fichiers.

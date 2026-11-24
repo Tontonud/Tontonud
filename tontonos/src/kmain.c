@@ -2,6 +2,7 @@
 #include "kernel.h"
 #include "gfx.h"
 #include "wm.h"
+#include "fs.h"
 
 extern u8 kernel_end[];
 
@@ -27,6 +28,7 @@ void kmain(u32 magic, struct multiboot_info *mb) {
     if (!(mb->flags & (1 << 12)) || mb->fb_type != 1) for (;;) __asm__ volatile("hlt");
     gfx_init((u32)mb->fb_addr, mb->fb_pitch, mb->fb_width, mb->fb_height, mb->fb_bpp);
 
+    fs_init();
     interrupts_init();
     keyboard_init();
     mouse_init();

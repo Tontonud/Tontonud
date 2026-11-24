@@ -60,6 +60,16 @@ void draw_icon(int icon, int x, int y, int s) {
         gfx_disc(x + s/2, y + s/2, s/4, RGB(230, 235, 245));
         gfx_disc(x + s/2, y + s/2, s/8, RGB(120, 130, 150));
         break;
+    case ICON_FOLDER:
+        gfx_fill(x + u, y + 3*u, 6*u, 2*u, RGB(230, 170, 40));
+        gfx_fill(x + u, y + 4*u, s - 2*u, s - 6*u, RGB(245, 190, 60));
+        gfx_fill(x + u, y + 6*u, s - 2*u, s - 8*u, RGB(252, 211, 90));
+        break;
+    case ICON_FILE:
+        gfx_fill(x + 3*u, y + u, s - 6*u, s - 2*u, 0xFFFFFF);
+        gfx_rect(x + 3*u, y + u, s - 6*u, s - 2*u, RGB(140, 150, 170));
+        for (int i = 0; i < 4; i++) gfx_fill(x + 5*u, y + (4 + 3*i)*u, s - 10*u, u, RGB(150, 170, 210));
+        break;
     case ICON_ABOUT:
         gfx_disc(x + s/2, y + s/2, s/2 - u, accent_color);
         gfx_fill(x + s/2 - u, y + 7*u, 2*u, 6*u, 0xFFFFFF);
@@ -169,6 +179,7 @@ static void draw_window(int i, int active) {
 
 /* ---- Bureau ---- */
 static const struct { const char *name; int icon; void (*open)(void); } desk[] = {
+    { "Explorateur",  ICON_FOLDER,   app_explorer },
     { "Terminal",     ICON_TERM,     app_terminal },
     { "Bloc-notes",   ICON_NOTES,    app_notes },
     { "Calculatrice", ICON_CALC,     app_calc },
@@ -179,7 +190,7 @@ static const struct { const char *name; int icon; void (*open)(void); } desk[] =
 };
 #define NDESK (int)(sizeof(desk) / sizeof(desk[0]))
 #define DI_W 88
-#define DI_H 84
+#define DI_H 80
 static void desk_icon_pos(int i, int *x, int *y) { *x = 16; *y = 16 + i * DI_H; }
 
 static const u32 wallpapers[][2] = {
@@ -197,7 +208,7 @@ static void draw_desktop(void) {
     int lx = scr_w / 2 + 120, ly = h / 2 - 90;
     draw_logo(lx + 30, ly + 20, 120);
     gfx_text_bold(lx + 54, ly + 160, "TontonOS", 0xFFFFFF);
-    gfx_text(lx + 54 + 72, ly + 160, "1.0", RGB(200, 210, 240));
+    gfx_text(lx + 54 + 72, ly + 160, "1.1", RGB(200, 210, 240));
 
     for (int i = 0; i < NDESK; i++) {
         int x, y; desk_icon_pos(i, &x, &y);
@@ -207,8 +218,8 @@ static void draw_desktop(void) {
         }
         draw_icon(desk[i].icon, x + (DI_W - 40) / 2, y + 6, 40);
         int tw = gfx_text_w(desk[i].name);
-        gfx_text(x + (DI_W - tw) / 2 + 1, y + 54, desk[i].name, 0);
-        gfx_text(x + (DI_W - tw) / 2, y + 53, desk[i].name, 0xFFFFFF);
+        gfx_text(x + (DI_W - tw) / 2 + 1, y + 51, desk[i].name, 0);
+        gfx_text(x + (DI_W - tw) / 2, y + 50, desk[i].name, 0xFFFFFF);
     }
 }
 

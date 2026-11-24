@@ -35,11 +35,14 @@ extern u32 accent_color;
 extern int wallpaper;
 
 /* Icônes */
-enum { ICON_TERM, ICON_NOTES, ICON_CALC, ICON_PAINT, ICON_MINES, ICON_SETTINGS, ICON_ABOUT, ICON_COUNT };
+enum { ICON_TERM, ICON_NOTES, ICON_CALC, ICON_PAINT, ICON_MINES, ICON_SETTINGS, ICON_ABOUT, ICON_FOLDER, ICON_FILE, ICON_COUNT };
 
 /* Applications (apps.c) */
 void app_terminal(void);
 void app_notes(void);
+struct fnode;
+void app_notes_open(struct fnode *f);
+void app_explorer(void);
 void app_calc(void);
 void app_paint(void);
 void app_mines(void);

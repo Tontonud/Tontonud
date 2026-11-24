@@ -1,5 +1,6 @@
 /* TontonOS - applications intégrées */
 #include "wm.h"
+#include "fs.h"
 
 #define DARK  RGB(30, 35, 45)
 #define MUTED RGB(110, 118, 132)
@@ -16,7 +17,13 @@ typedef struct {
     int  blink;
     char hist[8][T_COLS + 1];
     int  nhist, hpos;
+    fnode_t *cwd;
 } term_t;
+
+static void t_prompt(term_t *t, char *out) {
+    char p[48]; fs_path(t->cwd ? t->cwd : fs_root, p, sizeof(p));
+    strcpy(out, "tonton:"); strlcpy(out + 7, p, 40); strcpy(out + strlen(out), ">");
+}
 
 static void t_newline(term_t *t, u32 c) {
     if (t->n == T_ROWS) {
@@ -48,9 +55,11 @@ static void t_draw(window_t *w, int x, int y) {
     for (int r = first; r < t->n; r++)
         gfx_text(x + 6, y + 4 + (r - first) * FONT_H, t->line[r], t->color[r]);
     int py = y + 4 + (t->n - first) * FONT_H;
-    gfx_text(x + 6, py, "tonton>", T_GREEN);
-    gfx_text(x + 6 + 8 * FONT_W, py, t->in, 0xFFFFFF);
-    if (t->blink < 5) gfx_fill(x + 6 + (8 + t->ilen) * FONT_W, py + 2, FONT_W, FONT_H - 3, RGB(200, 200, 200));
+    char pr[56]; t_prompt(t, pr);
+    int pl = strlen(pr) + 1;
+    gfx_text(x + 6, py, pr, T_GREEN);
+    gfx_text(x + 6 + pl * FONT_W, py, t->in, 0xFFFFFF);
+    if (t->blink < 5) gfx_fill(x + 6 + (pl + t->ilen) * FONT_W, py + 2, FONT_W, FONT_H - 3, RGB(200, 200, 200));
 }
 static void t_tick(window_t *w) { term_t *t = w->data; t->blink = (t->blink + 1) % 10; if (t->blink == 0 || t->blink == 5) wm_invalidate(); }
 
@@ -81,6 +90,8 @@ static void t_exec(term_t *t, const char *c) {
         t_print(t, "  fond <1-4>      change le fond d'écran", T_OK);
         t_print(t, "  ouvrir <appli>  notes, calc, peinture, mines, param", T_OK);
         t_print(t, "  calc <a> <op> <b>  petit calcul (+ - * /)", T_OK);
+        t_print(t, "  ls, cd <dossier>, pwd, cat <fichier>", T_OK);
+        t_print(t, "  mkdir <nom>, touch <nom>, rm <nom>, edit <fichier>", T_OK);
         t_print(t, "  redemarrer / eteindre", T_OK);
     } else if (!strcmp(c, "effacer") || !strcmp(c, "cls") || !strcmp(c, "clear")) {
         t->n = 0;
@@ -112,7 +123,7 @@ static void t_exec(term_t *t, const char *c) {
         strcpy(buf + strlen(buf), " s");
         t_print(t, buf, T_OK);
     } else if (!strcmp(c, "ver")) {
-        t_print(t, "TontonOS version 1.0 - noyau 32 bits écrit à partir de zéro", T_BLUE);
+        t_print(t, "TontonOS version 1.1 - noyau 32 bits écrit à partir de zéro", T_BLUE);
     } else if ((a = arg_after(c, "clavier"))) {
         if (!strcmp(a, "fr") || !strcmp(a, "azerty")) kb_azerty = 1;
         else if (!strcmp(a, "us") || !strcmp(a, "qwerty")) kb_azerty = 0;
@@ -146,6 +157,42 @@ static void t_exec(term_t *t, const char *c) {
         }
         strcpy(buf, "= "); ftoa(r, buf + 2);
         t_print(t, buf, T_GREEN);
+    } else if (!strcmp(c, "pwd")) {
+        fs_path(t->cwd, buf, sizeof(buf)); t_print(t, buf, T_OK);
+    } else if ((a = arg_after(c, "ls")) || (a = arg_after(c, "dir"))) {
+        fnode_t *d = *a ? fs_resolve(t->cwd, a) : t->cwd;
+        if (!d || !d->is_dir) { t_print(t, "Dossier introuvable.", T_RED); return; }
+        fnode_t *items[64]; int n = fs_list(d, items, 64);
+        if (!n) t_print(t, "(dossier vide)", MUTED);
+        for (int i = 0; i < n; i++) {
+            if (items[i]->is_dir) { strcpy(buf, "[dossier]  "); strcpy(buf + 11, items[i]->name); t_print(t, buf, T_BLUE); }
+            else {
+                itoa(items[i]->size, tmp); strcpy(buf, "           "); strcpy(buf + 11, items[i]->name);
+                strcpy(buf + strlen(buf), "  ("); strcpy(buf + strlen(buf), tmp); strcpy(buf + strlen(buf), " octets)");
+                t_print(t, buf, T_OK);
+            }
+        }
+    } else if ((a = arg_after(c, "cd"))) {
+        fnode_t *d = *a ? fs_resolve(t->cwd, a) : fs_root;
+        if (!d || !d->is_dir) t_print(t, "Dossier introuvable.", T_RED); else t->cwd = d;
+    } else if ((a = arg_after(c, "cat"))) {
+        fnode_t *f = fs_resolve(t->cwd, a);
+        if (!f || f->is_dir) { t_print(t, "Fichier introuvable.", T_RED); return; }
+        t_print(t, f->data ? f->data : "", T_OK);
+    } else if ((a = arg_after(c, "mkdir")) || (a = arg_after(c, "touch"))) {
+        int dir = c[0] == 'm';
+        if (!*a) { t_print(t, dir ? "Usage : mkdir <nom>" : "Usage : touch <nom>", T_RED); return; }
+        if (!fs_create(t->cwd, a, dir)) t_print(t, "Création impossible (nom déjà pris ?).", T_RED);
+    } else if ((a = arg_after(c, "rm"))) {
+        fnode_t *f = *a ? fs_resolve(t->cwd, a) : NULL;
+        if (!f) t_print(t, "Introuvable.", T_RED);
+        else if (f == t->cwd || f == fs_root) t_print(t, "Impossible de supprimer ce dossier.", T_RED);
+        else if (!fs_delete(f)) t_print(t, "Le dossier n'est pas vide.", T_RED);
+    } else if ((a = arg_after(c, "edit"))) {
+        fnode_t *f = fs_resolve(t->cwd, a);
+        if (!f) f = fs_create(t->cwd, a, 0);
+        if (!f || f->is_dir) t_print(t, "Impossible d'ouvrir ce fichier.", T_RED);
+        else app_notes_open(f);
     } else if (!strcmp(c, "redemarrer")) {
         reboot();
     } else if (!strcmp(c, "eteindre")) {
@@ -162,8 +209,8 @@ static void t_key(window_t *w, int k) {
     term_t *t = w->data;
     t->blink = 0;
     if (k == KEY_ENTER) {
-        char line[T_COLS + 12];
-        strcpy(line, "tonton> "); strcpy(line + 8, t->in);
+        char line[T_COLS + 60];
+        t_prompt(t, line); strcpy(line + strlen(line), " "); strlcpy(line + strlen(line), t->in, T_COLS);
         t_print(t, line, RGB(150, 160, 180));
         if (t->ilen) {
             if (t->nhist == 8) { memmove(t->hist[0], t->hist[1], 7 * (T_COLS + 1)); t->nhist--; }
@@ -173,6 +220,13 @@ static void t_key(window_t *w, int k) {
         char cmd[T_COLS + 1]; strcpy(cmd, t->in);
         t->ilen = 0; t->in[0] = 0;
         t_exec(t, cmd);
+    } else if (k == KEY_TAB) {
+        /* complète le dernier mot avec un nom du dossier courant */
+        int st = t->ilen; while (st > 0 && t->in[st - 1] != ' ') st--;
+        const char *pre = t->in + st; int pl = t->ilen - st;
+        fnode_t *items[64], *hit = NULL; int n = fs_list(t->cwd, items, 64), cnt = 0;
+        for (int i = 0; i < n; i++) if (!strncmp(items[i]->name, pre, pl)) { hit = items[i]; cnt++; }
+        if (cnt == 1 && st + (int)strlen(hit->name) < T_COLS - 30) { strcpy(t->in + st, hit->name); t->ilen = strlen(t->in); }
     } else if (k == KEY_BACKSPACE) {
         if (t->ilen) t->in[--t->ilen] = 0;
     } else if (k == KEY_UP || k == KEY_DOWN) {
@@ -184,7 +238,7 @@ static void t_key(window_t *w, int k) {
         t->ilen = strlen(t->in);
     } else if ((k & 0xFFFF) == ('l' | 0) && (k & KMOD_CTRL)) {
         t->n = 0;
-    } else if (k >= 32 && k < 256 && t->ilen < T_COLS - 9) {
+    } else if (k >= 32 && k < 256 && t->ilen < T_COLS - 30) {
         t->in[t->ilen++] = k; t->in[t->ilen] = 0;
     }
 }
@@ -195,13 +249,42 @@ void app_terminal(void) {
     term_t *t = kzalloc(sizeof(term_t));
     if (!t) { wm_close(w); return; }
     w->data = t; w->draw = t_draw; w->key = t_key; w->tick = t_tick;
-    t_print(t, "TontonOS [version 1.0]", T_BLUE);
+    t->cwd = fs_find(fs_root, "Documents"); if (!t->cwd) t->cwd = fs_root;
+    t_print(t, "TontonOS [version 1.1]", T_BLUE);
     t_print(t, "Tapez « aide » pour voir les commandes.", MUTED);
 }
 
 /* =========================== Bloc-notes =========================== */
 #define N_MAX 16000
-typedef struct { char text[N_MAX]; int len, cur, top, blink; } notes_t;
+typedef struct { char text[N_MAX]; int len, cur, top, blink, modified; fnode_t *file; char msg[48]; } notes_t;
+
+static void n_title(window_t *w) {
+    notes_t *n = w->data;
+    char t[40];
+    strlcpy(t, n->modified ? "*" : "", sizeof(t));
+    strlcpy(t + strlen(t), n->file ? n->file->name : "Sans titre", 26);
+    strlcpy(t + strlen(t), " - Bloc-notes", sizeof(t) - strlen(t));
+    strlcpy(w->title, t, sizeof(w->title));
+}
+static void n_save(window_t *w) {
+    notes_t *n = w->data;
+    if (!n->file || !n->file->used) {
+        fnode_t *docs = fs_find(fs_root, "Documents");
+        if (!docs) docs = fs_root;
+        char name[FS_NAME], num[8];
+        for (int i = 1; i < 100; i++) {
+            strcpy(name, "Note "); itoa(i, num); strcpy(name + 5, num); strcpy(name + strlen(name), ".txt");
+            if (!fs_find(docs, name)) break;
+        }
+        n->file = fs_create(docs, name, 0);
+        if (!n->file) { strcpy(n->msg, "Impossible de créer le fichier."); return; }
+    }
+    if (!fs_write(n->file, n->text, n->len)) { strcpy(n->msg, "Mémoire insuffisante."); return; }
+    n->modified = 0;
+    char path[64]; fs_path(n->file, path, sizeof(path));
+    strcpy(n->msg, "Enregistré : "); strlcpy(n->msg + 13, path, sizeof(n->msg) - 13);
+    n_title(w);
+}
 
 static void n_curpos(notes_t *n, int *line, int *col) {
     int l = 0, c = 0;
@@ -220,7 +303,10 @@ static void n_draw(window_t *w, int x, int y) {
     notes_t *n = w->data;
     gfx_fill(x, y, w->w, 24, RGB(238, 241, 246));
     gfx_fill(x, y + 24, w->w, 1, RGB(210, 216, 226));
-    gfx_text(x + 8, y + 4, "Fichier   Édition   Format", RGB(60, 66, 78));
+    ui_button(x + 4, y + 2, 80, 20, "Nouveau", 0);
+    ui_button(x + 88, y + 2, 104, 20, "Enregistrer", 0);
+    ui_button(x + 196, y + 2, 104, 20, "Explorateur", 0);
+    gfx_text(x + 312, y + 4, "Ctrl+S : enregistrer", MUTED);
     int rows = (w->h - 50) / FONT_H, cl, cc; n_curpos(n, &cl, &cc);
     if (cl < n->top) n->top = cl;
     if (cl >= n->top + rows) n->top = cl - rows + 1;
@@ -237,18 +323,30 @@ static void n_draw(window_t *w, int x, int y) {
     if (n->blink < 5) gfx_fill(x + 8 + cc * FONT_W, ty + (cl - n->top) * FONT_H, 2, FONT_H, DARK);
     /* barre d'état */
     gfx_fill(x, y + w->h - 20, w->w, 20, RGB(238, 241, 246));
-    char st[64], tmp[12];
+    char st[120], tmp[12];
     strcpy(st, "Ligne "); itoa(cl + 1, tmp); strcpy(st + strlen(st), tmp);
     strcpy(st + strlen(st), ", colonne "); itoa(cc + 1, tmp); strcpy(st + strlen(st), tmp);
     strcpy(st + strlen(st), "   |   "); itoa(n->len, tmp); strcpy(st + strlen(st), tmp);
     strcpy(st + strlen(st), " caractères");
+    if (n->msg[0]) { strcpy(st + strlen(st), "   |   "); strlcpy(st + strlen(st), n->msg, sizeof(st) - strlen(st)); }
     gfx_text(x + 8, y + w->h - 18, st, MUTED);
 }
+static void n_key_edit(window_t *w, int k, int l, int c);
 static void n_tick(window_t *w) { notes_t *n = w->data; n->blink = (n->blink + 1) % 10; if (n->blink == 0 || n->blink == 5) wm_invalidate(); }
 static void n_key(window_t *w, int k) {
     notes_t *n = w->data;
     int l, c; n_curpos(n, &l, &c);
     n->blink = 0;
+    if (k == ('s' | KMOD_CTRL)) { n_save(w); return; }
+    if (k == (KEY_HOME | KMOD_CTRL)) { n->cur = 0; return; }
+    if (k == (KEY_END | KMOD_CTRL)) { n->cur = n->len; return; }
+    int was = n->modified, oldlen = n->len;
+    n_key_edit(w, k, l, c);
+    if (n->len != oldlen) { n->modified = 1; n->msg[0] = 0; }
+    if (n->modified != was) n_title(w);
+}
+static void n_key_edit(window_t *w, int k, int l, int c) {
+    notes_t *n = w->data;
     switch (k) {
     case KEY_LEFT:  if (n->cur) n->cur--; return;
     case KEY_RIGHT: if (n->cur < n->len) n->cur++; return;
@@ -269,7 +367,7 @@ static void n_key(window_t *w, int k) {
         memmove(n->text + n->cur, n->text + n->cur + 1, n->len - n->cur - 1);
         n->len--; return;
     }
-    if (k == KEY_TAB) { for (int i = 0; i < 4; i++) n_key(w, ' '); return; }
+    if (k == KEY_TAB) { for (int i = 0; i < 4; i++) n_key_edit(w, ' ', l, c + i); return; }
     if ((k >= 32 && k < 256) || k == KEY_ENTER) {
         if (n->len >= N_MAX - 1) return;
         if (k != KEY_ENTER && n_line_len(n, n->cur - c) >= (w->w - 16) / FONT_W - 1) return;
@@ -277,15 +375,36 @@ static void n_key(window_t *w, int k) {
         n->text[n->cur++] = k; n->len++;
     }
 }
-void app_notes(void) {
-    window_t *w = wm_open("Sans titre - Bloc-notes", 600, 420, ICON_NOTES);
+static void n_mouse(window_t *w, int x, int y, int ev, int b) {
+    notes_t *n = w->data;
+    if (ev != MEV_DOWN) return;
+    if (ui_hit(x, y, 4, 2, 80, 20)) app_notes();
+    else if (ui_hit(x, y, 88, 2, 104, 20)) n_save(w);
+    else if (ui_hit(x, y, 196, 2, 104, 20)) app_explorer();
+    else if (y >= 30 && y < w->h - 20) {
+        /* clic dans le texte : place le curseur */
+        int line = n->top + (y - 30) / FONT_H, col = (x - 8 + FONT_W / 2) / FONT_W;
+        int nl = n_lines(n);
+        if (line >= nl) line = nl - 1;
+        int s0 = n_line_start(n, line);
+        n->cur = s0 + max(0, min(col, n_line_len(n, s0)));
+        n->blink = 0;
+    }
+}
+void app_notes_open(fnode_t *f) {
+    window_t *w = wm_open("Bloc-notes", 600, 420, ICON_NOTES);
     if (!w) return;
     notes_t *n = kzalloc(sizeof(notes_t));
     if (!n) { wm_close(w); return; }
-    w->data = n; w->draw = n_draw; w->key = n_key; w->tick = n_tick;
-    const char *hello = "Bienvenue dans le Bloc-notes de TontonOS !\n\nÉcrivez ce que vous voulez ici.\nLes accents marchent : é è à ç ù ê â ô.\n";
-    strcpy(n->text, hello); n->len = strlen(hello); n->cur = n->len;
+    w->data = n; w->draw = n_draw; w->key = n_key; w->tick = n_tick; w->mouse = n_mouse;
+    if (f && !f->is_dir) {
+        n->file = f;
+        n->len = min(f->size, N_MAX - 1);
+        if (f->data) memcpy(n->text, f->data, n->len);
+    }
+    n_title(w);
 }
+void app_notes(void) { app_notes_open(NULL); }
 
 /* =========================== Calculatrice =========================== */
 typedef struct { double acc; char disp[24]; char op; int fresh; char hist[40]; int pressed; } calc_t;
@@ -577,7 +696,7 @@ void app_settings(void) {
 static void a_draw(window_t *w, int x, int y) {
     gfx_gradient_v(x, y, w->w, 90, accent_color, gfx_blend(accent_color, 0xFFFFFF, 90));
     gfx_text_bold(x + 24, y + 26, "TontonOS", 0xFFFFFF);
-    gfx_text(x + 24, y + 48, "Version 1.0 - un système écrit à partir de zéro", RGB(235, 240, 255));
+    gfx_text(x + 24, y + 48, "Version 1.1 - un système écrit à partir de zéro", RGB(235, 240, 255));
     char buf[80], tmp[12];
     int ly = y + 110;
     gfx_text(x + 24, ly, "Noyau : 32 bits, mode protégé x86", DARK);
@@ -586,7 +705,7 @@ static void a_draw(window_t *w, int x, int y) {
     gfx_text(x + 24, ly + 22, buf, DARK);
     strcpy(buf, "Mémoire : "); itoa(mem_total_kb / 1024, tmp); strcpy(buf + strlen(buf), tmp); strcpy(buf + strlen(buf), " Mo");
     gfx_text(x + 24, ly + 44, buf, DARK);
-    gfx_text(x + 24, ly + 66, "Clavier, souris, fenêtres, 7 applications", DARK);
+    gfx_text(x + 24, ly + 66, "Clavier, souris, fenêtres, 8 applications", DARK);
     gfx_text(x + 24, ly + 100, "Double-cliquez sur une icône du bureau", MUTED);
     gfx_text(x + 24, ly + 118, "ou ouvrez le menu Démarrer pour commencer.", MUTED);
     ui_button(x + w->w - 110, y + w->h - 44, 90, 30, "OK", 0);
@@ -599,4 +718,107 @@ void app_about(void) {
     window_t *w = wm_open("À propos de TontonOS", 440, 300, ICON_ABOUT);
     if (!w) return;
     w->draw = a_draw; w->mouse = a_mouse; w->key = a_key;
+}
+
+/* =========================== Explorateur =========================== */
+#define E_TOP 70
+#define E_ROW 26
+typedef struct { fnode_t *dir; fnode_t *items[64]; int n, sel, scroll; u32 last_tick; int last_idx; char msg[60]; } expl_t;
+
+static void e_refresh(expl_t *e) {
+    e->n = fs_list(e->dir, e->items, 64);
+    if (e->sel >= e->n) e->sel = e->n - 1;
+}
+static const char *e_btn[] = { "Remonter", "Nouveau dossier", "Nouveau fichier", "Supprimer" };
+static const int e_bx[] = { 8, 100, 236, 372 }, e_bw[] = { 88, 132, 132, 96 };
+
+static void e_draw(window_t *w, int x, int y) {
+    expl_t *e = w->data;
+    e_refresh(e);
+    gfx_fill(x, y, w->w, E_TOP, RGB(238, 241, 246));
+    for (int i = 0; i < 4; i++) ui_button(x + e_bx[i], y + 6, e_bw[i], 26, e_btn[i], 0);
+    char path[64]; fs_path(e->dir, path, sizeof(path));
+    gfx_fill(x + 8, y + 38, w->w - 16, 26, 0xFFFFFF);
+    gfx_rect(x + 8, y + 38, w->w - 16, 26, RGB(200, 208, 222));
+    draw_icon(ICON_FOLDER, x + 14, y + 43, 16);
+    gfx_text(x + 38, y + 43, path, DARK);
+    gfx_fill(x, y + E_TOP - 1, w->w, 1, RGB(210, 216, 226));
+    gfx_text(x + 44, y + E_TOP + 4, "Nom", MUTED);
+    gfx_text(x + w->w - 130, y + E_TOP + 4, "Taille", MUTED);
+    int rows = (w->h - E_TOP - 48) / E_ROW;
+    if (e->sel >= 0 && e->sel < e->scroll) e->scroll = e->sel;
+    if (e->sel >= e->scroll + rows) e->scroll = e->sel - rows + 1;
+    for (int r = 0; r < rows && e->scroll + r < e->n; r++) {
+        int i = e->scroll + r, ry = y + E_TOP + 24 + r * E_ROW;
+        fnode_t *f = e->items[i];
+        if (i == e->sel) gfx_fill(x + 4, ry, w->w - 8, E_ROW - 2, gfx_blend(0xFFFFFF, accent_color, 50));
+        draw_icon(f->is_dir ? ICON_FOLDER : ICON_FILE, x + 16, ry + 3, 20);
+        gfx_text(x + 44, ry + 5, f->name, DARK);
+        char sz[24];
+        if (f->is_dir) strcpy(sz, "Dossier");
+        else { itoa(f->size, sz); strcpy(sz + strlen(sz), " o"); }
+        gfx_text(x + w->w - 130, ry + 5, sz, MUTED);
+    }
+    if (!e->n) gfx_text(x + 44, y + E_TOP + 30, "Ce dossier est vide.", MUTED);
+    gfx_fill(x, y + w->h - 22, w->w, 22, RGB(238, 241, 246));
+    char st[90], tmp[12];
+    itoa(e->n, tmp); strcpy(st, tmp); strcpy(st + strlen(st), e->n > 1 ? " éléments" : " élément");
+    if (e->msg[0]) { strcpy(st + strlen(st), "   |   "); strlcpy(st + strlen(st), e->msg, 60); }
+    gfx_text(x + 8, y + w->h - 19, st, MUTED);
+}
+static void e_open(expl_t *e, fnode_t *f) {
+    if (f->is_dir) { e->dir = f; e->sel = -1; e->scroll = 0; e->msg[0] = 0; }
+    else app_notes_open(f);
+}
+static void e_new(expl_t *e, int dir) {
+    char name[FS_NAME], num[8];
+    const char *base = dir ? "Nouveau dossier" : "Nouveau fichier";
+    for (int i = 1; i < 100; i++) {
+        strcpy(name, base);
+        if (i > 1) { strcpy(name + strlen(name), " "); itoa(i, num); strcpy(name + strlen(name), num); }
+        if (!dir) strcpy(name + strlen(name), ".txt");
+        if (!fs_find(e->dir, name)) break;
+    }
+    if (fs_create(e->dir, name, dir)) { strcpy(e->msg, "Créé : "); strlcpy(e->msg + 7, name, 40); }
+    else strcpy(e->msg, "Plus de place.");
+}
+static void e_delete(expl_t *e) {
+    if (e->sel < 0 || e->sel >= e->n) { strcpy(e->msg, "Sélectionnez d'abord un élément."); return; }
+    fnode_t *f = e->items[e->sel];
+    char name[FS_NAME]; strcpy(name, f->name);
+    if (!fs_delete(f)) { strcpy(e->msg, "Le dossier n'est pas vide."); return; }
+    strcpy(e->msg, "Supprimé : "); strlcpy(e->msg + 11, name, 40);
+    e->sel = -1;
+}
+static void e_mouse(window_t *w, int x, int y, int ev, int b) {
+    expl_t *e = w->data;
+    if (ev != MEV_DOWN) return;
+    if (y < E_TOP) {
+        if (ui_hit(x, y, e_bx[0], 6, e_bw[0], 26)) { if (e->dir->parent) { e->dir = e->dir->parent; e->sel = -1; e->scroll = 0; } }
+        else if (ui_hit(x, y, e_bx[1], 6, e_bw[1], 26)) e_new(e, 1);
+        else if (ui_hit(x, y, e_bx[2], 6, e_bw[2], 26)) e_new(e, 0);
+        else if (ui_hit(x, y, e_bx[3], 6, e_bw[3], 26)) e_delete(e);
+        return;
+    }
+    int r = (y - E_TOP - 24) / E_ROW;
+    int i = y >= E_TOP + 24 ? e->scroll + r : -1;
+    if (i < 0 || i >= e->n) { e->sel = -1; return; }
+    if (i == e->last_idx && ticks - e->last_tick < 60) { e->last_idx = -1; e_open(e, e->items[i]); return; }
+    e->sel = i; e->last_idx = i; e->last_tick = ticks;
+}
+static void e_key(window_t *w, int k) {
+    expl_t *e = w->data;
+    if (k == KEY_DOWN && e->sel < e->n - 1) e->sel++;
+    else if (k == KEY_UP && e->sel > 0) e->sel--;
+    else if (k == KEY_ENTER && e->sel >= 0 && e->sel < e->n) e_open(e, e->items[e->sel]);
+    else if (k == KEY_BACKSPACE && e->dir->parent) { e->dir = e->dir->parent; e->sel = -1; e->scroll = 0; }
+    else if (k == KEY_DEL) e_delete(e);
+}
+void app_explorer(void) {
+    window_t *w = wm_open("Explorateur", 520, 380, ICON_FOLDER);
+    if (!w) return;
+    expl_t *e = kzalloc(sizeof(expl_t));
+    if (!e) { wm_close(w); return; }
+    e->dir = fs_root; e->sel = -1; e->last_idx = -1;
+    w->data = e; w->draw = e_draw; w->mouse = e_mouse; w->key = e_key;
 }
