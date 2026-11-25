@@ -16,17 +16,47 @@ struct multiboot_info {
     u8  fb_bpp, fb_type;
 } __attribute__((packed));
 
+struct mmap_entry { u32 size; u64 base; u64 len; u32 type; } __attribute__((packed));
+
 void kmain(u32 magic, struct multiboot_info *mb) {
     if (magic != 0x2BADB002) for (;;) __asm__ volatile("hlt");
 
-    /* Mémoire : le tas commence après le noyau et occupe la RAM restante */
-    mem_total_kb = (mb->flags & 1) ? mb->mem_upper + 1024 : 32 * 1024;
-    u32 heap_start = ((u32)kernel_end + 0xFFF) & ~0xFFFu;
-    u32 heap_end = 0x100000 + (mem_total_kb - 1024) * 1024;
-    heap_init(heap_start, heap_end - heap_start);
-
+    /* On copie d'abord les infos d'écran : le tas peut recouvrir la structure Multiboot */
     if (!(mb->flags & (1 << 12)) || mb->fb_type != 1) for (;;) __asm__ volatile("hlt");
-    gfx_init((u32)mb->fb_addr, mb->fb_pitch, mb->fb_width, mb->fb_height, mb->fb_bpp);
+    u32 fb_addr = (u32)mb->fb_addr, fb_pitch = mb->fb_pitch, fb_w = mb->fb_width, fb_h = mb->fb_height, fb_bpp = mb->fb_bpp;
+
+    /* Mémoire : on cherche le plus grand bloc libre au-dessus de 1 Mo dans la carte mémoire.
+       En UEFI, la mémoire est morcelée ; mem_upper ne donne que le premier morceau. */
+    u32 kend = ((u32)kernel_end + 0xFFF) & ~0xFFFu;
+    u32 best_start = kend, best_size = 0;
+    u64 total = 0;
+    if (mb->flags & (1 << 6)) {
+        u32 p = mb->mmap_addr, end = mb->mmap_addr + mb->mmap_length;
+        while (p < end) {
+            struct mmap_entry *e = (struct mmap_entry *)p;
+            if (e->type == 1) {
+                total += e->len;
+                u64 lo = e->base, hi = e->base + e->len;
+                if (hi > 0xFFFFF000ull) hi = 0xFFFFF000ull;       /* 32 bits seulement */
+                if (lo < kend) lo = kend;                          /* jamais sur le noyau */
+                if (lo < 0x100000) lo = 0x100000;
+                /* évite la structure Multiboot et la carte mémoire elles-mêmes */
+                if (lo <= (u32)mb && (u32)mb < hi && (u32)mb - lo < 0x10000) lo = ((u32)mb + 0x1000) & ~0xFFFu;
+                if (lo <= mb->mmap_addr && mb->mmap_addr < hi && mb->mmap_addr - lo < 0x10000) lo = (end + 0xFFF) & ~0xFFFu;
+                if (hi > lo && hi - lo > best_size) { best_start = (u32)lo; best_size = (u32)(hi - lo); }
+            }
+            p += e->size + 4;
+        }
+        mem_total_kb = (u32)(total / 1024);
+    }
+    if (!best_size) {   /* pas de carte : on se rabat sur mem_upper */
+        mem_total_kb = (mb->flags & 1) ? mb->mem_upper + 1024 : 32 * 1024;
+        best_start = kend;
+        best_size = 0x100000 + (mem_total_kb - 1024) * 1024 - kend;
+    }
+    heap_init(best_start, best_size);
+
+    gfx_init(fb_addr, fb_pitch, fb_w, fb_h, fb_bpp);
 
     fs_init();
     interrupts_init();

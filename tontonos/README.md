@@ -34,15 +34,18 @@ Le fichier `tontonos.iso` est prêt à l'emploi :
   puis insérer `tontonos.iso` comme disque optique.
 - **QEMU** : `qemu-system-i386 -cdrom tontonos.iso -m 128M`
 
-Il n'a été testé que dans QEMU. Sur un vrai PC, il faut un démarrage en mode BIOS
-(« Legacy » / CSM) et une souris ou un clavier compatibles PS/2.
+L'image démarre en BIOS et en UEFI (64 et 32 bits), testée dans QEMU et QEMU + OVMF
+(`make run-uefi`). Sur un vrai PC en UEFI, il faut désactiver le Secure Boot (le chargeur
+GRUB n'est pas signé). La souris doit être compatible PS/2 ; le clavier intégré des
+portables l'est presque toujours.
 
 ## Compiler
 
 Sous Ubuntu ou Debian :
 
 ```sh
-sudo apt install gcc gcc-multilib nasm grub-pc-bin grub-common xorriso mtools qemu-system-x86
+sudo apt install gcc gcc-multilib nasm grub-pc-bin grub-efi-amd64-bin grub-efi-ia32-bin grub-common \
+                 xorriso mtools qemu-system-x86 ovmf
 make        # produit build/tontonos.iso
 make run    # lance QEMU
 ```

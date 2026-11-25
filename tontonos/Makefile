@@ -31,7 +31,14 @@ build/tontonos.iso: build/kernel.bin grub.cfg
 run: build/tontonos.iso
 	qemu-system-i386 -cdrom $< -m 128M
 
+# Test du démarrage UEFI (paquet ovmf)
+run-uefi: build/tontonos.iso
+	cp /usr/share/OVMF/OVMF_VARS_4M.fd build/ovmf_vars.fd
+	qemu-system-x86_64 -m 256M -cdrom $< \
+	  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+	  -drive if=pflash,format=raw,file=build/ovmf_vars.fd
+
 clean:
 	rm -rf build
 
-.PHONY: all run clean
+.PHONY: all run run-uefi clean
