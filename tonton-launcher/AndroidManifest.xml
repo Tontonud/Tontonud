@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tonton.launcher"
-    android:versionCode="2"
-    android:versionName="1.1">
+    android:versionCode="3"
+    android:versionName="1.2">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
 
@@ -10,8 +10,6 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <!-- Proposer la désinstallation depuis le tiroir d'applis -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-    <!-- Ouvrir le panneau de notifications en glissant vers le bas -->
-    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
     <application
         android:label="Tonton Launcher"
@@ -34,19 +32,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- Service d'accessibilité : ouvrir les notifications, verrouiller l'écran -->
-        <service
-            android:name=".GestureService"
-            android:label="@string/gesture_service_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/gesture_service" />
-        </service>
     </application>
 </manifest>

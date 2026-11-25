@@ -227,7 +227,7 @@ public class HomeActivity extends Activity {
         });
         home.addView(searchPill, new LinearLayout.LayoutParams(-1, dp(50)));
 
-        TextView hint = text("▴  Glissez vers le haut", 12, 0x99FFFFFF, false);
+        TextView hint = text("▴  Glissez vers le haut pour vos applis", 12, 0x99FFFFFF, false);
         hint.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
         hp.topMargin = dp(10);
@@ -243,21 +243,18 @@ public class HomeActivity extends Activity {
         dp_.topMargin = dp(10);
         home.addView(dock, dp_);
 
-        /* Gestes : glisser vers le haut = applis, vers le bas = notifications */
+        /* Gestes : glisser vers le haut = applis, vers le bas = recherche.
+           (Les notifications s'ouvrent en glissant depuis le bord du haut, geste du système.) */
         final GestureDetector gd = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
             @Override public boolean onFling(MotionEvent a, MotionEvent b, float vx, float vy) {
                 if (a == null || b == null) return false;
                 float dy = b.getY() - a.getY();
                 if (Math.abs(dy) < dp(60) || Math.abs(vy) < Math.abs(vx)) return false;
-                if (dy < 0) openDrawer(false); else expandNotifications();
+                if (dy < 0) openDrawer(false); else openDrawer(true);
                 return true;
             }
             @Override public void onLongPress(MotionEvent e) { showSettings(); }
-            @Override public boolean onDoubleTap(MotionEvent e) {
-                if (!GestureService.lockScreen()) askGestureService("verrouiller l'écran par un double appui");
-                return true;
-            }
         });
         home.setOnTouchListener(new View.OnTouchListener() {
             @Override public boolean onTouch(View v, MotionEvent e) { return gd.onTouchEvent(e); }
@@ -560,32 +557,6 @@ public class HomeActivity extends Activity {
             .show();
     }
 
-    void expandNotifications() {
-        /* Méthode officielle : notre service d'accessibilité.
-           (L'ancienne fonction interne d'Android est bloquée depuis Android 9.) */
-        if (GestureService.notifications()) return;
-        askGestureService("ouvrir les notifications en glissant vers le bas");
-    }
-
-    void askGestureService(String what) {
-        new AlertDialog.Builder(this)
-            .setTitle("Activer les gestes")
-            .setMessage("Pour " + what + ", Android demande d'activer le service « Tonton Launcher : gestes ».\n\n"
-                + "1. Touchez « Ouvrir les réglages ».\n"
-                + "2. Cherchez « Tonton Launcher : gestes » (parfois dans « Applis installées » ou « Services téléchargés »).\n"
-                + "3. Activez-le.\n\n"
-                + "Si le bouton est grisé (« paramètre restreint ») : Paramètres → Applis → Tonton Launcher → menu ⋮ en haut à droite → « Autoriser les paramètres restreints », puis recommencez.\n\n"
-                + "Ce service ne lit pas le contenu de vos applis.")
-            .setPositiveButton("Ouvrir les réglages", new DialogInterface.OnClickListener() {
-                @Override public void onClick(DialogInterface d, int w) {
-                    try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
-                    catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
-                }
-            })
-            .setNegativeButton("Plus tard", null)
-            .show();
-    }
-
     /* ================================================================
      *  Favoris (stockés sous la forme "paquet/classe" séparés par ;)
      * ================================================================ */
@@ -699,7 +670,7 @@ public class HomeActivity extends Activity {
         final int[] co = { prefs.getInt("columns", 4) == 5 ? 1 : 0 };
         box.addView(choiceRow(new String[] { "4 colonnes", "5 colonnes" }, co, null));
 
-        TextView about = text("Tonton Launcher 1.1 - dans le style de TontonOS\nGestes : " + (GestureService.instance != null ? "activés" : "désactivés"), 12, 0xFF888888, false);
+        TextView about = text("Tonton Launcher 1.2 - dans le style de TontonOS", 12, 0xFF888888, false);
         about.setPadding(0, dp(18), 0, dp(8));
         box.addView(about);
 

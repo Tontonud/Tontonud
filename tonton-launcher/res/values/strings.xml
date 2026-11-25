@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="gesture_service_label">Tonton Launcher : gestes</string>
-    <string name="gesture_service_desc">Permet à Tonton Launcher d\'ouvrir les notifications quand vous glissez vers le bas sur l\'écran d\'accueil, et de verrouiller l\'écran par un double appui. Ce service ne lit pas le contenu de vos applis.</string>
-</resources>

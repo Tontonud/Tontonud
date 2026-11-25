@@ -12,15 +12,11 @@ on revient à l'ancien quand on veut.
 - **Tiroir d'applis** : glisser vers le haut. Grille alphabétique, recherche instantanée
   (sans tenir compte des accents), Entrée ouvre la première appli trouvée.
 - **Appui long sur une appli** : ajouter ou retirer de l'accueil, infos, désinstaller.
-- **Glisser vers le bas** sur l'accueil : panneau de notifications.
-- **Double appui** sur un espace vide : verrouille l'écran.
+- **Glisser vers le bas** au milieu de l'accueil : recherche d'applis avec le clavier.
+  Les notifications s'ouvrent en glissant depuis le bord du haut de l'écran (geste du système).
 
-Ces deux gestes passent par le service d'accessibilité « Tonton Launcher : gestes », à activer
-une fois (le launcher propose d'ouvrir le bon réglage). Le service ne lit pas le contenu des
-applis. Sur Android 13 et plus, si le réglage est grisé : Paramètres → Applis → Tonton Launcher
-→ menu ⋮ → « Autoriser les paramètres restreints ».
-- **Réglages** (appui long sur un espace vide de l'accueil, ou ⚙ dans le tiroir) : prénom,
-  fond (4 dégradés TontonOS ou fond d'écran du téléphone), couleur d'accent, 4 ou 5 colonnes.
+Pas de service d'accessibilité : Google Play Protect bloque l'installation hors Play Store
+des applis qui en contiennent (protection anti-fraude).
 
 ## Installer sur le téléphone
 
