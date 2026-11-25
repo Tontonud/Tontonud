@@ -3,7 +3,8 @@
 
 /* ================= Clavier ================= */
 int kb_azerty = 1;
-static int shift, ctrl, alt, altgr, caps, ext, dead;
+static int shift, ctrl, alt, altgr, caps, ext, dead, gui, gui_used;
+#define MODS() ((alt ? KMOD_ALT : 0) | (gui ? KMOD_WIN : 0))
 
 #define QSIZE 128
 static volatile int kq[QSIZE];
@@ -33,6 +34,12 @@ static void kb_irq(regs_t *r) {
     if (ext) {
         ext = 0;
         if (sc == 0x38) { altgr = !rel; return; }
+        /* touche Windows : seule, elle ouvre le menu ; avec une autre touche, c'est un raccourci */
+        if (sc == 0x5B || sc == 0x5C) {
+            if (!rel) { if (!gui) gui_used = 0; gui = 1; }
+            else { gui = 0; if (!gui_used) kpush(KEY_WIN); }
+            return;
+        }
         if (sc == 0x1D) { ctrl = !rel; return; }
         if (sc == 0x2A || sc == 0x36) return;     /* faux décalages */
         if (rel) return;
@@ -45,7 +52,7 @@ static void kb_irq(regs_t *r) {
         case 0x51: k = KEY_PGDN; break;  case 0x1C: k = KEY_ENTER; break;
         case 0x35: k = '/'; break;
         }
-        if (k) kpush(k | (alt ? KMOD_ALT : 0) | (ctrl ? KMOD_CTRL : 0));
+        if (k) { gui_used |= gui; kpush(k | MODS() | (ctrl ? KMOD_CTRL : 0)); }
         return;
     }
     if (sc == 0x2A || sc == 0x36) { shift = !rel; return; }
@@ -91,8 +98,10 @@ static void kb_irq(regs_t *r) {
         kpush(d);
         if (c == ' ') return;
     }
-    if (ctrl && c >= 'a' && c <= 'z') { kpush(c | KMOD_CTRL); return; }
-    kpush(c | (alt ? KMOD_ALT : 0));
+    gui_used |= gui;
+    if (gui && c >= 'A' && c <= 'Z') c += 32;
+    if (ctrl && c >= 'a' && c <= 'z') { kpush(c | KMOD_CTRL | MODS()); return; }
+    kpush(c | MODS());
 }
 
 int keyboard_get(void) {

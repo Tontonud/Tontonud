@@ -10,7 +10,8 @@ static int drag_win = -1, drag_dx, drag_dy, capture_win = -1;
 static int rs_win = -1, rs_mode, rs_sx, rs_sy, rs_w, rs_h;   /* redimensionnement en cours */
 static int title_click_win = -1; static u32 title_click_tick;
 #define GRIP 6        /* épaisseur de la zone de saisie des bords */
-static int start_open;
+static int start_open, sm_sel = -1;   /* sm_sel : élément choisi au clavier */
+
 static int last_click_tick, last_click_icon = -1, sel_icon = -1;
 static int clock_min = -1;
 u32 accent_color = RGB(37, 99, 235);
@@ -254,7 +255,7 @@ static void draw_desktop(void) {
     int lx = scr_w / 2 + 120, ly = h / 2 - 90;
     draw_logo(lx + 30, ly + 20, 120);
     gfx_text_bold(lx + 54, ly + 160, "TontonOS", 0xFFFFFF);
-    gfx_text(lx + 54 + 72, ly + 160, "1.1", RGB(200, 210, 240));
+    gfx_text(lx + 54 + 72, ly + 160, "1.2", RGB(200, 210, 240));
 
     for (int i = 0; i < NDESK; i++) {
         int x, y; desk_icon_pos(i, &x, &y);
@@ -322,7 +323,7 @@ static void draw_start_menu(void) {
     gfx_text(x + 54, y + 26, "Bonjour, Tonton !", RGB(220, 230, 255));
     for (int i = 0; i < SM_N; i++) {
         int iy = y + 58 + i * SM_ITEM;
-        if (ui_hit(mx, my, x, iy, SM_W, SM_ITEM)) gfx_fill(x + 4, iy, SM_W - 8, SM_ITEM - 2, RGB(56, 66, 90));
+        if (i == sm_sel || (sm_sel < 0 && ui_hit(mx, my, x, iy, SM_W, SM_ITEM))) gfx_fill(x + 4, iy, SM_W - 8, SM_ITEM - 2, RGB(56, 66, 90));
         if (i < NDESK) {
             draw_icon(desk[i].icon, x + 14, iy + 7, 24);
             gfx_text(x + 50, iy + 11, desk[i].name, 0xFFFFFF);
@@ -336,16 +337,17 @@ static void draw_start_menu(void) {
         }
     }
 }
+static void start_menu_activate(int i) {
+    start_open = 0; sm_sel = -1; dirty = 1;
+    if (i < NDESK) desk[i].open();
+    else if (i == NDESK) reboot();
+    else shutdown();
+}
 static int start_menu_click(void) {
     int x = 4, y = sm_y();
     if (!ui_hit(mx, my, x, y, SM_W, SM_N * SM_ITEM + 66)) return 0;
     int i = (my - y - 58) / SM_ITEM;
-    if (my >= y + 58 && i >= 0 && i < SM_N) {
-        start_open = 0;
-        if (i < NDESK) desk[i].open();
-        else if (i == NDESK) reboot();
-        else { shutdown(); }
-    }
+    if (my >= y + 58 && i >= 0 && i < SM_N) start_menu_activate(i);
     return 1;
 }
 
@@ -382,7 +384,7 @@ static void on_press(int button) {
     }
     if (my >= scr_h - TASKBAR_H) {
         if (button != 1) return;
-        if (mx < START_W) { start_open = 1; dirty = 1; return; }
+        if (mx < START_W) { start_open = 1; sm_sel = -1; dirty = 1; return; }
         int n = 0;
         for (int i = 0; i < MAXWIN; i++) if (wins[i].used) {
             int x; task_btn_rect(n++, &x);
@@ -495,6 +497,64 @@ static void handle_mouse(mouse_ev_t *e) {
     }
 }
 
+/* ---- Clavier : raccourcis du système ---- */
+static void set_rect(window_t *w, int x, int y, int cw, int ch) {
+    if (!w->maximized) { w->rx = w->x; w->ry = w->y; w->rw = w->w; w->rh = w->h; }
+    w->x = x; w->y = y; w->w = cw; w->h = ch; w->maximized = 1;
+}
+static int wm_shortcut(int k) {
+    int base = k & 0xFFFF, t = top_win();
+    /* Menu Démarrer : touche Windows, puis flèches / Entrée / Échap */
+    if (k == KEY_WIN || k == (KEY_ESC | KMOD_CTRL)) {
+        start_open = !start_open; sm_sel = start_open ? 0 : -1; return 1;
+    }
+    if (start_open) {
+        if (base == KEY_DOWN) sm_sel = (sm_sel + 1) % SM_N;
+        else if (base == KEY_UP) sm_sel = (sm_sel + SM_N - 1) % SM_N;
+        else if (base == KEY_ENTER && sm_sel >= 0) start_menu_activate(sm_sel);
+        else if (base == KEY_ESC) { start_open = 0; sm_sel = -1; }
+        return 1;
+    }
+    /* Alt+Tab : passer à la fenêtre suivante (la plus ancienne au premier plan) */
+    if (k == (KEY_TAB | KMOD_ALT)) {
+        if (zcount < 1) return 1;
+        int i = zorder[0];
+        if (zcount > 1 && i == t) i = zorder[1];
+        wins[i].minimized = 0; z_top(i);
+        return 1;
+    }
+    if (k & KMOD_WIN) {
+        /* Windows + D : afficher le bureau / revenir */
+        if (base == 'd') {
+            int any = 0;
+            for (int i = 0; i < MAXWIN; i++) if (wins[i].used && !wins[i].minimized) any = 1;
+            for (int i = 0; i < MAXWIN; i++) if (wins[i].used) wins[i].minimized = any;
+            if (any && sel_icon < 0) sel_icon = 0;
+            return 1;
+        }
+        if (t < 0) return 1;
+        window_t *w = &wins[t];
+        int full_h = scr_h - TASKBAR_H - TITLE_H - BORDER;
+        if (base == KEY_UP) { if (!w->maximized) toggle_max(w); else if (w->resizable && w->w < scr_w - 2 * BORDER) { toggle_max(w); toggle_max(w); } }
+        else if (base == KEY_DOWN) { if (w->maximized) toggle_max(w); else w->minimized = 1; }
+        else if ((base == KEY_LEFT || base == KEY_RIGHT) && w->resizable) {
+            int half = scr_w / 2;
+            set_rect(w, base == KEY_LEFT ? 0 : half, 0, half - 2 * BORDER, full_h);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* Bureau sans fenêtre : flèches pour choisir une icône, Entrée pour l'ouvrir */
+static void desktop_key(int k) {
+    if (k == KEY_DOWN || k == KEY_RIGHT) sel_icon = sel_icon < 0 ? 0 : (sel_icon + 1) % NDESK;
+    else if (k == KEY_UP || k == KEY_LEFT) sel_icon = sel_icon < 0 ? 0 : (sel_icon + NDESK - 1) % NDESK;
+    else if (k == KEY_ENTER && sel_icon >= 0) desk[sel_icon].open();
+    else return;
+    dirty = 1;
+}
+
 /* ---- Boucle principale ---- */
 void wm_init(void) {
     mx = scr_w / 2; my = scr_h / 2;
@@ -512,9 +572,10 @@ void wm_run(void) {
             if ((k & KMOD_ALT) && (k & 0xFFFF) == KEY_F4) {
                 int t = top_win(); if (t >= 0) wm_close(&wins[t]); continue;
             }
-            if (start_open && k == KEY_ESC) { start_open = 0; dirty = 1; continue; }
+            if (wm_shortcut(k)) { dirty = 1; continue; }
             int t = top_win();
             if (t >= 0 && wins[t].key) { wins[t].key(&wins[t], k); dirty = 1; }
+            else if (t < 0) desktop_key(k);
         }
         if (ticks != last_tick) {
             u32 now = ticks;

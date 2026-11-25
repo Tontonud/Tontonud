@@ -101,6 +101,6 @@ void fs_init(void) {
         "Attention : les fichiers vivent en mémoire vive.\n"
         "Ils disparaissent quand l'ordinateur redémarre.\n");
     add_file(docs, "Liste de courses.txt", "- pain\n- lait\n- fromage\n- café\n");
-    add_file(sys, "version.txt", "TontonOS 1.1\nNoyau 32 bits, mode protégé x86\n");
+    add_file(sys, "version.txt", "TontonOS 1.2\nNoyau 32 bits, mode protégé x86\n");
     add_file(sys, "licence.txt", "TontonOS est écrit à partir de zéro.\nPolice : Lat15-VGA16 (console-setup).\n");
 }

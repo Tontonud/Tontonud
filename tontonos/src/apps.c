@@ -123,7 +123,7 @@ static void t_exec(term_t *t, const char *c) {
         strcpy(buf + strlen(buf), " s");
         t_print(t, buf, T_OK);
     } else if (!strcmp(c, "ver")) {
-        t_print(t, "TontonOS version 1.1 - noyau 32 bits écrit à partir de zéro", T_BLUE);
+        t_print(t, "TontonOS version 1.2 - noyau 32 bits écrit à partir de zéro", T_BLUE);
     } else if ((a = arg_after(c, "clavier"))) {
         if (!strcmp(a, "fr") || !strcmp(a, "azerty")) kb_azerty = 1;
         else if (!strcmp(a, "us") || !strcmp(a, "qwerty")) kb_azerty = 0;
@@ -251,7 +251,7 @@ void app_terminal(void) {
     w->data = t; w->draw = t_draw; w->key = t_key; w->tick = t_tick;
     wm_set_resizable(w, 320, 160);
     t->cwd = fs_find(fs_root, "Documents"); if (!t->cwd) t->cwd = fs_root;
-    t_print(t, "TontonOS [version 1.1]", T_BLUE);
+    t_print(t, "TontonOS [version 1.2]", T_BLUE);
     t_print(t, "Tapez « aide » pour voir les commandes.", MUTED);
 }
 
@@ -577,7 +577,7 @@ void app_paint(void) {
 #define M_CELL 30
 #define M_MINES 14
 #define M_TOP 46
-typedef struct { u8 mine[M_N][M_N], open[M_N][M_N], flag[M_N][M_N]; int state, opened, start, secs; } mines_t;
+typedef struct { u8 mine[M_N][M_N], open[M_N][M_N], flag[M_N][M_N]; int state, opened, start, secs, ki, kj, kb; } mines_t;
 
 static void m_reset(mines_t *m) { memset(m, 0, sizeof(*m)); }
 /* Les mines sont posées au premier clic, jamais autour de la case cliquée */
@@ -630,21 +630,42 @@ static void m_draw(window_t *w, int x, int y) {
             else { int n = m_count(m, i, j); if (n) { char s[2] = { '0' + n, 0 }; gfx_text_bold(cx + 10, cy + 6, s, m_numcol[n]); } }
         }
     }
+    if (m->kb) {
+        int cx = x + 5 + m->ki * M_CELL, cy = y + M_TOP + m->kj * M_CELL;
+        gfx_rect(cx - 2, cy - 2, M_CELL + 2, M_CELL + 2, accent_color);
+        gfx_rect(cx - 1, cy - 1, M_CELL, M_CELL, accent_color);
+    }
+}
+static void m_act(mines_t *m, int i, int j, int flag) {
+    if (m->state) return;
+    if (flag && !m->start) return;
+    if (!m->start) { m->start = ticks; m_place(m, i, j); }
+    if (flag) { if (!m->open[i][j]) m->flag[i][j] ^= 1; return; }
+    if (m->flag[i][j]) return;
+    if (m->mine[i][j]) { m->state = 2; return; }
+    m_open(m, i, j);
+    if (m->opened == M_N * M_N - M_MINES) m->state = 1;
 }
 static void m_mouse(window_t *w, int x, int y, int ev, int b) {
     mines_t *m = w->data;
     if (ev != MEV_DOWN && ev != MEV_RDOWN) return;
     if (y < M_TOP) { if (ev == MEV_DOWN && ui_hit(x, y, w->w / 2 - 44, 8, 88, 30)) m_reset(m); return; }
-    if (m->state) return;
     int i = (x - 5) / M_CELL, j = (y - M_TOP) / M_CELL;
     if (x < 5 || i >= M_N || j >= M_N) return;
-    if (ev == MEV_RDOWN && !m->start) return;
-    if (!m->start) { m->start = ticks; m_place(m, i, j); }
-    if (ev == MEV_RDOWN) { if (!m->open[i][j]) m->flag[i][j] ^= 1; return; }
-    if (m->flag[i][j]) return;
-    if (m->mine[i][j]) { m->state = 2; return; }
-    m_open(m, i, j);
-    if (m->opened == M_N * M_N - M_MINES) m->state = 1;
+    m->kb = 0;
+    m_act(m, i, j, ev == MEV_RDOWN);
+}
+/* Clavier : flèches pour bouger, Espace/Entrée pour découvrir, D pour un drapeau, N pour rejouer */
+static void m_key(window_t *w, int k) {
+    mines_t *m = w->data;
+    m->kb = 1;
+    if (k == KEY_LEFT && m->ki > 0) m->ki--;
+    else if (k == KEY_RIGHT && m->ki < M_N - 1) m->ki++;
+    else if (k == KEY_UP && m->kj > 0) m->kj--;
+    else if (k == KEY_DOWN && m->kj < M_N - 1) m->kj++;
+    else if (k == ' ' || k == KEY_ENTER) m_act(m, m->ki, m->kj, 0);
+    else if (k == 'd' || k == 'D') m_act(m, m->ki, m->kj, 1);
+    else if (k == 'n' || k == 'N') { m_reset(m); m->kb = 1; }
 }
 static void m_tick(window_t *w) {
     mines_t *m = w->data;
@@ -656,7 +677,7 @@ void app_mines(void) {
     mines_t *m = kmalloc(sizeof(mines_t));
     if (!m) { wm_close(w); return; }
     m_reset(m);
-    w->data = m; w->draw = m_draw; w->mouse = m_mouse; w->tick = m_tick;
+    w->data = m; w->draw = m_draw; w->mouse = m_mouse; w->tick = m_tick; w->key = m_key;
 }
 
 /* =========================== Paramètres =========================== */
@@ -679,7 +700,18 @@ static void s_draw(window_t *w, int x, int y) {
     gfx_text_bold(x + 20, y + 206, "Disposition du clavier", DARK);
     ui_button(x + 20, y + 230, 160, 32, "AZERTY (français)", kb_azerty);
     ui_button(x + 190, y + 230, 160, 32, "QWERTY (US)", !kb_azerty);
-    gfx_text(x + 20, y + 274, "Astuce : F12 bascule la disposition à tout moment.", MUTED);
+    gfx_text(x + 20, y + 274, "Clavier : flèches = fond et couleur, K = disposition.", MUTED);
+}
+/* Clavier : gauche/droite = fond, haut/bas = couleur, K = clavier */
+static void s_key(window_t *w, int k) {
+    int ai = 0;
+    for (int i = 0; i < 6; i++) if (accent_color == accents[i]) ai = i;
+    if (k == KEY_RIGHT) wallpaper = (wallpaper + 1) % 4;
+    else if (k == KEY_LEFT) wallpaper = (wallpaper + 3) % 4;
+    else if (k == KEY_DOWN) accent_color = accents[(ai + 1) % 6];
+    else if (k == KEY_UP) accent_color = accents[(ai + 5) % 6];
+    else if (k == 'k' || k == 'K') kb_azerty = !kb_azerty;
+    else if (k == KEY_ESC || k == KEY_ENTER) wm_close(w);
 }
 static void s_mouse(window_t *w, int x, int y, int ev, int b) {
     if (ev != MEV_DOWN) return;
@@ -691,14 +723,14 @@ static void s_mouse(window_t *w, int x, int y, int ev, int b) {
 void app_settings(void) {
     window_t *w = wm_open("Paramètres", 430, 300, ICON_SETTINGS);
     if (!w) return;
-    w->draw = s_draw; w->mouse = s_mouse;
+    w->draw = s_draw; w->mouse = s_mouse; w->key = s_key;
 }
 
 /* =========================== À propos =========================== */
 static void a_draw(window_t *w, int x, int y) {
     gfx_gradient_v(x, y, w->w, 90, accent_color, gfx_blend(accent_color, 0xFFFFFF, 90));
     gfx_text_bold(x + 24, y + 26, "TontonOS", 0xFFFFFF);
-    gfx_text(x + 24, y + 48, "Version 1.1 - un système écrit à partir de zéro", RGB(235, 240, 255));
+    gfx_text(x + 24, y + 48, "Version 1.2 - un système écrit à partir de zéro", RGB(235, 240, 255));
     char buf[80], tmp[12];
     int ly = y + 110;
     gfx_text(x + 24, ly, "Noyau : 32 bits, mode protégé x86", DARK);

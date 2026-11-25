@@ -65,6 +65,7 @@ enum {
     KEY_HOME, KEY_END, KEY_DEL, KEY_PGUP, KEY_PGDN,
     KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6,
     KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
+    KEY_WIN,                        /* touche Windows seule */
 };
 #define KEY_BACKSPACE 8
 #define KEY_TAB       9
@@ -72,6 +73,7 @@ enum {
 #define KEY_ESC       27
 #define KMOD_ALT  0x10000
 #define KMOD_CTRL 0x20000
+#define KMOD_WIN  0x40000
 
 void keyboard_init(void);
 int  keyboard_get(void);            /* -1 si aucune touche */

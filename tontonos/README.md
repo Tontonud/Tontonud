@@ -65,6 +65,25 @@ make run    # lance QEMU
 | `src/lib.c` | Chaînes, nombres, allocateur mémoire |
 | `src/font.h` | Police générée par `tools/psf2c.py` (police console Lat15-VGA16) |
 
+## Raccourcis clavier
+
+TontonOS s'utilise entièrement au clavier (utile sur un vrai PC dont le pavé tactile
+n'est pas reconnu).
+
+| Touche | Action |
+|---|---|
+| Windows (ou Ctrl+Échap) | Ouvrir / fermer le menu Démarrer, puis ↑ ↓ et Entrée |
+| Alt+Tab | Passer à la fenêtre suivante |
+| Alt+F4 | Fermer la fenêtre |
+| Windows + ↑ / ↓ | Agrandir / restaurer ou réduire |
+| Windows + ← / → | Ranger la fenêtre sur la moitié gauche / droite |
+| Windows + D | Afficher le bureau (puis flèches et Entrée sur les icônes) |
+| F12 | Basculer AZERTY / QWERTY |
+| Mines | Flèches, Espace pour découvrir, D pour un drapeau, N pour rejouer |
+| Paramètres | ← → fond d'écran, ↑ ↓ couleur, K disposition du clavier |
+
+![Navigation au clavier](captures/clavier.png)
+
 ## Commandes du terminal
 
 `aide`, `effacer`, `echo`, `heure`, `date`, `mem`, `uptime`, `ver`,
