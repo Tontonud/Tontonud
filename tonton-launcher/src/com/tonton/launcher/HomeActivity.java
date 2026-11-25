@@ -46,7 +46,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.lang.reflect.Method;
 import java.text.Collator;
 import java.text.Normalizer;
 import java.text.SimpleDateFormat;
@@ -255,6 +254,10 @@ public class HomeActivity extends Activity {
                 return true;
             }
             @Override public void onLongPress(MotionEvent e) { showSettings(); }
+            @Override public boolean onDoubleTap(MotionEvent e) {
+                if (!GestureService.lockScreen()) askGestureService("verrouiller l'écran par un double appui");
+                return true;
+            }
         });
         home.setOnTouchListener(new View.OnTouchListener() {
             @Override public boolean onTouch(View v, MotionEvent e) { return gd.onTouchEvent(e); }
@@ -558,13 +561,29 @@ public class HomeActivity extends Activity {
     }
 
     void expandNotifications() {
-        try {
-            Object sb = getSystemService("statusbar");
-            Method m = sb.getClass().getMethod("expandNotificationsPanel");
-            m.invoke(sb);
-        } catch (Exception ignored) {
-            /* certains téléphones refusent : on ne fait rien */
-        }
+        /* Méthode officielle : notre service d'accessibilité.
+           (L'ancienne fonction interne d'Android est bloquée depuis Android 9.) */
+        if (GestureService.notifications()) return;
+        askGestureService("ouvrir les notifications en glissant vers le bas");
+    }
+
+    void askGestureService(String what) {
+        new AlertDialog.Builder(this)
+            .setTitle("Activer les gestes")
+            .setMessage("Pour " + what + ", Android demande d'activer le service « Tonton Launcher : gestes ».\n\n"
+                + "1. Touchez « Ouvrir les réglages ».\n"
+                + "2. Cherchez « Tonton Launcher : gestes » (parfois dans « Applis installées » ou « Services téléchargés »).\n"
+                + "3. Activez-le.\n\n"
+                + "Si le bouton est grisé (« paramètre restreint ») : Paramètres → Applis → Tonton Launcher → menu ⋮ en haut à droite → « Autoriser les paramètres restreints », puis recommencez.\n\n"
+                + "Ce service ne lit pas le contenu de vos applis.")
+            .setPositiveButton("Ouvrir les réglages", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+                    catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
+                }
+            })
+            .setNegativeButton("Plus tard", null)
+            .show();
     }
 
     /* ================================================================
@@ -680,7 +699,7 @@ public class HomeActivity extends Activity {
         final int[] co = { prefs.getInt("columns", 4) == 5 ? 1 : 0 };
         box.addView(choiceRow(new String[] { "4 colonnes", "5 colonnes" }, co, null));
 
-        TextView about = text("Tonton Launcher 1.0 - dans le style de TontonOS", 12, 0xFF888888, false);
+        TextView about = text("Tonton Launcher 1.1 - dans le style de TontonOS\nGestes : " + (GestureService.instance != null ? "activés" : "désactivés"), 12, 0xFF888888, false);
         about.setPadding(0, dp(18), 0, dp(8));
         box.addView(about);
 
