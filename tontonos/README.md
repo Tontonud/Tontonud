@@ -1,0 +1,91 @@
+# TontonOS
+
+Un petit système d'exploitation écrit à partir de zéro, en C et en assembleur x86.
+Il démarre avec GRUB, passe en mode graphique 1024 × 768 et affiche un bureau
+avec des fenêtres, une barre des tâches et un menu Démarrer.
+
+![Bureau de TontonOS](captures/bureau.png)
+
+## Ce qu'il sait faire
+
+- Noyau 32 bits en mode protégé : GDT, interruptions, minuterie, horloge CMOS.
+- Gestion de la mémoire (allocateur avec libération).
+- Pilotes clavier (AZERTY par défaut, QWERTY avec F12, accents et touches mortes ^ ¨)
+  et souris PS/2.
+- Graphismes : double tampon, police 8 × 16 avec les caractères accentués, ombres, dégradés.
+- Fenêtres déplaçables, réduction, fermeture, premier plan au clic.
+- Fenêtres redimensionnables par le bord droit, le bord du bas ou le coin (Terminal,
+  Bloc-notes, Explorateur), avec bouton Agrandir et double-clic sur la barre de titre.
+- Barre des tâches avec horloge, menu Démarrer, icônes du bureau (double-clic).
+- Système de fichiers en mémoire avec dossiers (Documents, Images, Système).
+  Les fichiers sont perdus au redémarrage.
+- Écran bleu en cas d'erreur du processeur.
+
+Applications : Explorateur, Terminal, Bloc-notes (ouvrir, modifier, enregistrer avec Ctrl+S),
+Calculatrice, Peinture, Mines, Paramètres (fond d'écran, couleur, clavier) et À propos.
+
+![Explorateur et Bloc-notes](captures/explorateur.png)
+
+## L'essayer
+
+Le fichier `tontonos.iso` est prêt à l'emploi :
+
+- **VirtualBox** : nouvelle machine « Other / Unknown (32-bit) », 128 Mo de RAM,
+  puis insérer `tontonos.iso` comme disque optique.
+- **QEMU** : `qemu-system-i386 -cdrom tontonos.iso -m 128M`
+
+L'image démarre en BIOS et en UEFI (64 et 32 bits), testée dans QEMU et QEMU + OVMF
+(`make run-uefi`). Sur un vrai PC en UEFI, il faut désactiver le Secure Boot (le chargeur
+GRUB n'est pas signé). La souris doit être compatible PS/2 ; le clavier intégré des
+portables l'est presque toujours.
+
+## Compiler
+
+Sous Ubuntu ou Debian :
+
+```sh
+sudo apt install gcc gcc-multilib nasm grub-pc-bin grub-efi-amd64-bin grub-efi-ia32-bin grub-common \
+                 xorriso mtools qemu-system-x86 ovmf
+make        # produit build/tontonos.iso
+make run    # lance QEMU
+```
+
+## Organisation du code
+
+| Fichier | Rôle |
+|---|---|
+| `src/boot.asm` | En-tête Multiboot, pile, chargement GDT/IDT, routines d'interruption |
+| `src/kmain.c` | Point d'entrée C : mémoire, écran, pilotes, lancement du bureau |
+| `src/interrupts.c` | GDT, IDT, contrôleur d'interruptions, minuterie, horloge, écran bleu |
+| `src/input.c` | Clavier et souris PS/2 |
+| `src/gfx.c` | Dessin : rectangles, texte, lignes, curseur, copie à l'écran |
+| `src/wm.c` | Bureau, fenêtres, barre des tâches, menu Démarrer |
+| `src/apps.c` | Les huit applications |
+| `src/fs.c` | Système de fichiers en mémoire |
+| `src/lib.c` | Chaînes, nombres, allocateur mémoire |
+| `src/font.h` | Police générée par `tools/psf2c.py` (police console Lat15-VGA16) |
+
+## Raccourcis clavier
+
+TontonOS s'utilise entièrement au clavier (utile sur un vrai PC dont le pavé tactile
+n'est pas reconnu).
+
+| Touche | Action |
+|---|---|
+| Windows (ou Ctrl+Échap) | Ouvrir / fermer le menu Démarrer, puis ↑ ↓ et Entrée |
+| Alt+Tab | Passer à la fenêtre suivante |
+| Alt+F4 | Fermer la fenêtre |
+| Windows + ↑ / ↓ | Agrandir / restaurer ou réduire |
+| Windows + ← / → | Ranger la fenêtre sur la moitié gauche / droite |
+| Windows + D | Afficher le bureau (puis flèches et Entrée sur les icônes) |
+| F12 | Basculer AZERTY / QWERTY |
+| Mines | Flèches, Espace pour découvrir, D pour un drapeau, N pour rejouer |
+| Paramètres | ← → fond d'écran, ↑ ↓ couleur, K disposition du clavier |
+
+![Navigation au clavier](captures/clavier.png)
+
+## Commandes du terminal
+
+`aide`, `effacer`, `echo`, `heure`, `date`, `mem`, `uptime`, `ver`,
+`clavier fr|us`, `fond 1-4`, `ouvrir <appli>`, `calc 12 * 7`, `redemarrer`, `eteindre`,
+`ls`, `cd`, `pwd`, `cat`, `mkdir`, `touch`, `rm`, `edit`. La touche Tab complète les noms de fichiers.
